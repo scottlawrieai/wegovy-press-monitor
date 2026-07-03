@@ -1,0 +1,60 @@
+# Wegovy Pill UK Launch — Press Monitor
+#
+# Scans every 30 minutes on GitHub-hosted runners and publishes a rolling
+# report to the `press-monitor-data` branch:
+#   monitor-data/REPORT.md
+#
+# Optional repo secret: TWITTER_BEARER_TOKEN enables the X/Twitter source.
+
+name: Wegovy Pill Press Monitor
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: press-monitor
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore previous scan state
+        run: |
+          git fetch origin press-monitor-data || true
+          if git rev-parse --verify origin/press-monitor-data >/dev/null 2>&1; then
+            git checkout origin/press-monitor-data -- monitor-data || echo "No prior state on data branch"
+          fi
+
+      - name: Run press monitor scan
+        env:
+          TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+        run: npm run scan
+
+      - name: Publish report to press-monitor-data branch
+        run: |
+          git config user.name "press-monitor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -f monitor-data
+          if git diff --cached --quiet; then
+            echo "No new mentions this scan"
+            exit 0
+          fi
+          git commit -m "Press monitor scan: $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push --force origin HEAD:refs/heads/press-monitor-data

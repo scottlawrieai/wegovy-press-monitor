@@ -1,0 +1,3 @@
+node_modules/
+# Scan output lives on the press-monitor-data branch, not main
+monitor-data/
